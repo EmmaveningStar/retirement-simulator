@@ -1,0 +1,14 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {defaults,simulate} from '../model.js';
+const base={...defaults,age:60,retire:60,end:61,stock:0,etf:0,cash:1200,living:100,rent:0,share:100,growth:0,return:0,inflation:0};
+test('monthly spending and exact depletion',()=>{const r=simulate(base);assert.equal(r.points.length,13);assert.equal(r.points[1].cash,1100);assert.equal(r.depletion,61);assert.equal(r.atRetire,1200);});
+test('contributions stop at retirement boundary',()=>{const r=simulate({...base,age:59,invest:100,saving:50,living:0});assert.equal(r.atRetire,3000);assert.equal(r.points.at(-1).assets,3000);});
+test('family assets and shared flows counted once',()=>{const r=simulate({...base,mode:'family',partnerCash:1200,partnerStock:0,partnerEtf:0,share:25});assert.equal(r.atRetire,2400);assert.equal(r.points.at(-1).assets,1200);});
+test('personal excludes partner and applies shared proportion once',()=>{const r=simulate({...base,share:50});assert.equal(r.atRetire,1200);assert.equal(r.points.at(-1).assets,600);});
+test('mortgage balance is not deducted up front; final balloon and stop',()=>{const r=simulate({...base,cash:2000,living:0,principal:1000,payment:100,mortgageMonths:2,mortgageRate:0});assert.equal(r.atRetire,2000);assert.equal(r.points[1].assets,1900);assert.equal(r.points[2].assets,1000);assert.equal(r.points[2].debt,0);assert.equal(r.points.at(-1).assets,1000);});
+test('pre-retirement net contributions avoid double deduction',()=>{const r=simulate({...base,age:59,principal:1000,payment:100,mortgageMonths:12,mortgageRate:0,invest:0,saving:0});assert.equal(r.atRetire,1200);assert.equal(r.points[12].debt,0);});
+test('effective monthly compounding and purchasing power',()=>{const r=simulate({...base,cash:0,stock:1000,living:0,return:12,inflation:12});assert.ok(Math.abs(r.points.at(-1).assets-1120)<1e-8);assert.ok(Math.abs(r.points.at(-1).real-1000)<1e-8);});
+test('rent surplus and cash-first withdrawals',()=>{let r=simulate({...base,stock:1000,cash:50});assert.equal(r.points[1].stocks,950);r=simulate({...base,living:0,rent:100});assert.equal(r.points.at(-1).cash,2400);});
+test('invalid and missing values are rejected',()=>{for(const change of [{age:70},{cash:NaN},{return:-100},{share:101},{principal:1,mortgageMonths:0},{mortgageMonths:1.5},{age:35.01}])assert.throws(()=>simulate({...base,...change}));});
+test('negative returns and zero assets never yield negative balances',()=>{const r=simulate({...base,cash:0,stock:10,return:-50});assert.ok(r.depletion<61);assert.ok(r.points.every(p=>p.assets>=0));});
